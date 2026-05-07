@@ -42,27 +42,6 @@
     margin-right: 2px;
   }
 
-  .btn-reset {
-    padding: 2px 8px;
-    font-size: 10px;
-    font-family: var(--font-sans);
-    font-weight: 500;
-    color: var(--color-muted);
-    background: transparent;
-    border: 1px solid rgba(139, 148, 158, 0.35);
-    border-radius: 4px;
-    cursor: pointer;
-    text-transform: none;
-    letter-spacing: normal;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
-  }
-
-  .btn-reset:hover {
-    color: var(--color-text);
-    background: rgba(139, 148, 158, 0.1);
-    border-color: rgba(139, 148, 158, 0.4);
-  }
-
   .panel-content {
     flex: 1;
     overflow-y: auto;
@@ -543,7 +522,6 @@
             <span class="status-label">Dashboard Status:</span>
             <span class="connection-label connecting" id="connection-label">CONNECTING</span>
           </div>
-          <button class="btn-reset" id="btn-reset-demo" title="Reset demo to initial state">Reset Demo</button>
         </div>
       </div>
       <div class="panel" id="panel-registry">
@@ -649,13 +627,15 @@
 
     switch (eventType) {
       case 'agent.created':
-        return 'Agent ' + (attrs['agent.id'] || '') + ' provisioned';
+        return (attrs['user.id'] || '') + ' → ' + (attrs['agent.id'] || '');
       case 'agent.terminated':
         return 'Agent ' + (attrs['agent.id'] || '') + ' terminated';
       case 'request.allowed':
         return (attrs['http.host'] || '') + ' -- allowed';
       case 'request.denied':
         return (attrs['http.host'] || '') + ' -- denied' + (attrs['denial.reason'] ? ': ' + attrs['denial.reason'] : '');
+      case 'agent.prompted':
+        return (attrs['user.id'] || 'user') + ' → ' + (attrs['agent.id'] || 'agent');
       default:
         if (attrs['agent.id']) return eventType + ' for ' + attrs['agent.id'];
         return eventType;
@@ -694,12 +674,6 @@
     const attrs = event.attributes || {};
     const agentId = attrs['agent.id'] || '';
 
-    // Demo reset — clear all local state
-    if (eventType === 'demo.reset') {
-      clearAllDashboardState();
-      return;
-    }
-
     // User lifecycle. Event names are speculative until the backend
     // settles its vocabulary; the handler shape stays the same.
     if (eventType === 'user.created') {
@@ -711,12 +685,11 @@
       if (userId) Topology.removeUserNode(userId);
     }
 
-    // User actions — light up the user→platform edge.
-    if (eventType === 'agent.requested' || eventType === 'prompt.sent' || eventType === 'permission.change_requested' || eventType === 'termination.requested') {
+    // agent.prompted: user→platform then platform→agent sequentially
+    if (eventType === 'agent.prompted') {
       const userId = attrs['user.id'] || '';
-      if (userId) {
-        Topology.highlightEdge(userId, Topology.EDGE_HIGHLIGHT_MS);
-      }
+      if (userId) Topology.highlightEdge(userId, Topology.EDGE_HIGHLIGHT_MS);
+      if (agentId) setTimeout(() => Topology.highlightEdge('platform-' + agentId, Topology.EDGE_HIGHLIGHT_MS), 400);
     }
 
     // Agent lifecycle. Light up the platform→agent edge: the platform is
@@ -729,11 +702,6 @@
     if (eventType === 'agent.terminated') {
       if (agentId) Topology.highlightEdge('platform-' + agentId, Topology.EDGE_HIGHLIGHT_MS);
       Topology.removeAgentRuntimeNode(agentId);
-    }
-
-    // Prompt delivered: platform exec'd into the agent via the supervisor.
-    if (eventType === 'agent.prompted') {
-      if (agentId) Topology.highlightEdge('platform-' + agentId, Topology.EDGE_HIGHLIGHT_MS);
     }
 
     // Gateway decisions
@@ -864,27 +832,6 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) stopRegistryPolling();
     else startRegistryPolling();
-  });
-
-  // ============================================================
-  // Reset button
-  // ============================================================
-  document.getElementById('btn-reset-demo').addEventListener('click', async () => {
-    const btn = document.getElementById('btn-reset-demo');
-    btn.disabled = true;
-    btn.textContent = 'Resetting...';
-
-    try {
-      const res = await fetch('/api/reset', { method: 'POST' });
-      if (res.ok) {
-        clearAllDashboardState();
-      }
-    } catch (err) {
-      console.error('Reset failed:', err);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Reset Demo';
-    }
   });
 
   // ============================================================
