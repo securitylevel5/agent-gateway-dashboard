@@ -53,7 +53,7 @@ function translateOtlpLogs(otlp) {
       }
     }
   }
-  return out;
+  return out.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
 }
 
 // ─── Jaeger trace export → flat events ─────────────────────────────────────
@@ -198,7 +198,7 @@ function translateOtlpTraces(payload) {
       }
     }
   }
-  return out;
+  return out.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
 }
 
 module.exports = { translateOtlpLogs, translateJaegerTraces, translateOtlpTraces };
