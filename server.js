@@ -123,12 +123,8 @@ const server = http.createServer(async (req, res) => {
         attributes: body.attributes || {},
         received_at: new Date().toISOString(),
       };
-      if (ev.event_type === 'demo.reset') {
-        events = [];
-      } else {
-        events.push(ev);
-        if (events.length > MAX_EVENTS) events = events.slice(-MAX_EVENTS);
-      }
+      events.push(ev);
+      if (events.length > MAX_EVENTS) events = events.slice(-MAX_EVENTS);
       broadcastEvent(ev);
       return sendJson(res, 200, {});
     }
@@ -138,12 +134,8 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       for (const ev of translateOtlpLogs(body)) {
         ev.received_at = new Date().toISOString();
-        if (ev.event_type === 'demo.reset') {
-          events = [];
-        } else {
-          events.push(ev);
-          if (events.length > MAX_EVENTS) events = events.slice(-MAX_EVENTS);
-        }
+        events.push(ev);
+        if (events.length > MAX_EVENTS) events = events.slice(-MAX_EVENTS);
         broadcastEvent(ev);
       }
       return sendJson(res, 200, { partialSuccess: {} });
@@ -228,48 +220,6 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // POST /api/reset - proxy to demo-admin reset endpoint
-    if (pathName === '/api/reset' && method === 'POST') {
-      const adminHost = process.env.ADMIN_HOST || 'demo-admin';
-      const adminPort = process.env.ADMIN_PORT || '8080';
-      return new Promise((resolve) => {
-        let responded = false;
-        const proxyReq = http.request({
-          hostname: adminHost,
-          port: parseInt(adminPort),
-          path: '/api/reset',
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 30000,
-        }, (proxyRes) => {
-          let body = '';
-          proxyRes.on('data', chunk => { body += chunk; });
-          proxyRes.on('end', () => {
-            if (responded) return;
-            responded = true;
-            events = [];
-            res.writeHead(proxyRes.statusCode, { 'Content-Type': 'application/json' });
-            res.end(body);
-            resolve();
-          });
-        });
-        proxyReq.on('error', (err) => {
-          if (responded) return;
-          responded = true;
-          sendJson(res, 502, { error: 'Failed to reach demo-admin: ' + err.message });
-          resolve();
-        });
-        proxyReq.on('timeout', () => {
-          proxyReq.destroy();
-          if (responded) return;
-          responded = true;
-          sendJson(res, 504, { error: 'demo-admin request timed out' });
-          resolve();
-        });
-        proxyReq.end();
-      });
-    }
-
     // Serve static files for everything else
     serveStatic(req, res);
   } catch (e) {
@@ -283,8 +233,9 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws) => {
   wsClients.add(ws);
 
-  // Send event history on connect
-  ws.send(JSON.stringify({ type: 'history', events }));
+  // Send event history on connect, sorted chronologically
+  const sortedEvents = [...events].sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+  ws.send(JSON.stringify({ type: 'history', events: sortedEvents }));
 
   ws.on('close', () => {
     wsClients.delete(ws);
