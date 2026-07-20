@@ -590,19 +590,37 @@
     const container = document.querySelector('#panel-audit .panel-content');
 
     const source = entry.source || '';
-    const sourceClass = 'audit-source-' + source;
+    // Restrict the source-derived class to a safe token; source is
+    // attacker-controlled and would otherwise break out of the attribute.
+    const sourceClass = 'audit-source-' + source.replace(/[^a-zA-Z0-9_-]/g, '-');
     const ts = formatTimestamp(entry.timestamp);
     const denied = entry.event_type === 'request.denied';
 
-    const html =
-      '<span class="audit-ts">' + esc(ts) + '</span>' +
-      '<span class="audit-source ' + sourceClass + '">' + esc(source) + '</span>' +
-      '<span class="audit-event">' + esc(entry.event_type || '') + '</span>' +
-      '<span class="audit-summary">' + esc(entry.summary || buildSummary(entry)) + '</span>';
-
     const row = document.createElement('div');
     row.className = 'audit-row' + (denied ? ' audit-denied' : '');
-    row.innerHTML = html;
+
+    // Build via DOM APIs + textContent so untrusted values can never be
+    // interpreted as HTML.
+    const tsSpan = document.createElement('span');
+    tsSpan.className = 'audit-ts';
+    tsSpan.textContent = ts;
+
+    const sourceSpan = document.createElement('span');
+    sourceSpan.className = 'audit-source ' + sourceClass;
+    sourceSpan.textContent = source;
+
+    const eventSpan = document.createElement('span');
+    eventSpan.className = 'audit-event';
+    eventSpan.textContent = entry.event_type || '';
+
+    const summarySpan = document.createElement('span');
+    summarySpan.className = 'audit-summary';
+    summarySpan.textContent = entry.summary || buildSummary(entry);
+
+    row.appendChild(tsSpan);
+    row.appendChild(sourceSpan);
+    row.appendChild(eventSpan);
+    row.appendChild(summarySpan);
     container.appendChild(row);
 
     // Auto-scroll
