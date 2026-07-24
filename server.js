@@ -62,15 +62,27 @@ function broadcastEvent(event) {
 // Serve static files from /app/public (+ shared theme.css)
 function serveStatic(req, res) {
   const publicDir = path.join(__dirname, 'public');
+
+  // Decode and strip the query/fragment before touching the filesystem so
+  // encoded traversal (e.g. %2e%2e) can't slip past the boundary check.
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  } catch (_err) {
+    res.writeHead(400);
+    return res.end('Bad request');
+  }
+
   let filePath;
-  if (req.url === '/theme.css') {
+  if (pathname === '/theme.css') {
     filePath = path.join(__dirname, 'theme.css');
-  } else if (req.url === '/registry-panel.js') {
+  } else if (pathname === '/registry-panel.js') {
     filePath = path.join(__dirname, 'registry-panel.js');
   } else {
-    filePath = path.join(publicDir, req.url === '/' ? 'index.html' : req.url);
-    // Prevent directory traversal (only for public dir paths)
-    if (!filePath.startsWith(publicDir)) {
+    // Resolve the request against publicDir and confirm it stays inside it.
+    const rel = pathname === '/' ? 'index.html' : '.' + path.posix.normalize(pathname);
+    filePath = path.resolve(publicDir, rel);
+    if (filePath !== publicDir && !filePath.startsWith(publicDir + path.sep)) {
       res.writeHead(403);
       return res.end('Forbidden');
     }
